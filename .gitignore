@@ -1,0 +1,7 @@
+.github/
+.vscode/
+models/
+pretrained_model/
+drive-download-20230604T105119Z-001.zip
+*.ipynb
+.__pycache__/
