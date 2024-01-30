@@ -43,8 +43,34 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 # Define your model
-resnet_t1 = vxm.networks.SingleResNet(in_channels=1, n_outputs=256, num_mlp=2, resnet_version='base', n_basefilters=16, n_blocks=3).to(device) 
-resnet_t2 = vxm.networks.SingleResNet(in_channels=1, n_outputs=256, num_mlp=2, resnet_version='base', n_basefilters=16, n_blocks=3).to(device)
+resnet_t1 = vxm.networks.SingleResNet(in_channels=1, resnet_version='base', n_basefilters=16, n_blocks=3).to(device)
+resnet_t2 = vxm.networks.SingleResNet(in_channels=1, resnet_version='base', n_basefilters=16, n_blocks=3).to(device)
+
+# Load RESNET pretrained on T1 images
+resnet_t1_dict = torch.load('./pretrained_model/ResNet_pretrained_on_ADNI+NIFD.ckpt')['state_dict']
+new_state_dict = {}
+# Modify keys to match the model's parameter names
+for key, value in resnet_t1_dict.items():
+    # Check if the key is in the model's state_dict
+    if 'net.' in key:
+        key = key.replace('net.', '')
+        key = key.replace('res','resnet.')
+    if 'resnet.blocks.3.' in key:
+        continue
+    if 'resnet.blocks.4.' in key:
+        continue
+    if 'resnet.blocks.5.' in key:
+        continue
+    if key in resnet_t1.state_dict():
+        # Modify key as needed to match the model's parameter names
+        new_state_dict[key] = value
+resnet_t1_dict['state_dict'] = new_state_dict
+resnet_t1.load_state_dict(resnet_t1_dict['state_dict'])
+del resnet_t1_dict, new_state_dict
+
+for param in resnet_t1.parameters():
+    param.requires_grad = False
+resnet_t1.eval()
 
 
 
@@ -55,28 +81,29 @@ for i, feature in enumerate(features_x):
 
 
 # Define loss function and optimizer
-criterion = Contrastive_loss_resnet_patches()
+criterion = CXB_resnset()
+layer = 3
 print('criterion', criterion)
 lr = 0.001
-optimizer_t1 = optim.Adam(resnet_t1.parameters(), lr=lr)
+#optimizer_t1 = optim.Adam(resnet_t1.parameters(), lr=lr)
 optimizer_t2 = optim.Adam(resnet_t2.parameters(), lr=lr)
 
 
 # Training loop
-model_dir = './pretrained_model/contrastive_learning_patches_fullimage'
+model_dir = './pretrained_model/CoBi'
 os.makedirs(model_dir, exist_ok=True)
-os.makedirs(os.path.join(model_dir,'t1'), exist_ok=True)
+#os.makedirs(os.path.join(model_dir,'t1'), exist_ok=True)
 os.makedirs(os.path.join(model_dir,'t2'), exist_ok=True)
 num_epochs = 30
 
-wandb_bool = True
+wandb_bool = False
 
 if wandb_bool:
     run = wandb.init(project='voxelmorph',group= 'pretrain_feature_extractor',
-                     name= 'contrastive_loss_patches_fullimage',
+                     name= 'Contextual loss',
     config={
             'number-epochs:':num_epochs, 'lr':lr, 'data_val':len(val_loader),
-            'similarity:':'cosine', 'layer':'0', 'patch_size':(8,8,8),
+            'similarity:':'cosine', 'layer':layer, 'patch_size':(8,8,8),
             'data_train':len(training_loader),
             })
 
@@ -97,7 +124,7 @@ for epoch in range(1,num_epochs+1):
                 t1, t1_output = resnet_t1(t1, get_features=True, get_all_features=True)
                 t2, t2_output = resnet_t2(t2, get_features=True, get_all_features=True)
 
-                loss = criterion(t2_output, t1_output)
+                loss = criterion(t2_output, t1_output, layer)
                 loss_epoch_eval.append(loss.item())
 
                 epoch_eval_time.append(time.time()-eval_start_time)
@@ -110,19 +137,19 @@ for epoch in range(1,num_epochs+1):
 
 
     if epoch % 10 == 0:
-        checkpoint_t1 = {
+        '''checkpoint_t1 = {
         'model_state_dict': resnet_t1.state_dict(),
         'optimizer_state_dict': optimizer_t1.state_dict(),
         'epoch': epoch,  
         'lr': lr,
-        }
+        }'''
         checkpoint_t2 = {
         'model_state_dict': resnet_t2.state_dict(),
         'optimizer_state_dict': optimizer_t2.state_dict(),
         'epoch': epoch,  
         'lr': lr,
         }
-        torch.save(checkpoint_t1, os.path.join(model_dir,'t1', '%04d.pt' % epoch))
+        #torch.save(checkpoint_t1, os.path.join(model_dir,'t1', '%04d.pt' % epoch))
         torch.save(checkpoint_t2, os.path.join(model_dir,'t2', '%04d.pt' % epoch))
 
         resnet_t1.eval()
@@ -138,7 +165,7 @@ for epoch in range(1,num_epochs+1):
                 t1, t1_features = resnet_t1(t1, get_features=True, get_all_features=True)
                 t2, t2_features = resnet_t2(t2, get_features=True, get_all_features=True)
 
-                loss = criterion(t2_features, t1_features)
+                loss = criterion(t2_features, t1_features, layer)
                 loss_epoch_eval.append(loss.item())
 
                 epoch_eval_time.append(time.time()-eval_start_time)
@@ -149,7 +176,7 @@ for epoch in range(1,num_epochs+1):
         if  wandb_bool:
             wandb.log({'epoch':epoch, 'loss(eval)':avg_loss.item(), 'time(eval)':avg_eval_time.item()}, step=epoch)
 
-    resnet_t1.train()
+    #resnet_t1.train()
     resnet_t2.train()
     loss_epoch = []
     epoch_time = []
@@ -166,19 +193,17 @@ for epoch in range(1,num_epochs+1):
         t1, t1_features = resnet_t1(t1, get_features=True, get_all_features=True)
         t2, t2_features = resnet_t2(t2, get_features=True, get_all_features=True)
         
-        #print(x.shape, y.shape)
-        
         # loss computation
-        loss = criterion(t2_features, t1_features)
+        loss = criterion(t2_features, t1_features, layer)
 
         # tracking loss
         loss_epoch.append(loss.item())
         
         # zero gradients, backward pass and optimization
-        optimizer_t1.zero_grad()
+        #optimizer_t1.zero_grad()
         optimizer_t2.zero_grad()
         loss.backward()
-        optimizer_t1.step()
+        #optimizer_t1.step()
         optimizer_t2.step()
 
         epoch_time.append(time.time() - step_start_time)
@@ -192,18 +217,18 @@ for epoch in range(1,num_epochs+1):
     # trainking loss
 
 
-checkpoint_t1 = {
+'''checkpoint_t1 = {
         'model_state_dict': resnet_t1.state_dict(),
         'optimizer_state_dict': optimizer_t1.state_dict(),
         'epoch': num_epochs,  
         'lr': lr,
-        }
+        }'''
 checkpoint_t2 = {
         'model_state_dict': resnet_t2.state_dict(),
         'optimizer_state_dict': optimizer_t2.state_dict(),
         'epoch': num_epochs,  
         'lr': lr,
         }
-torch.save(checkpoint_t1, os.path.join(model_dir,'t1', '%04d_final.pt' % num_epochs))
+#torch.save(checkpoint_t1, os.path.join(model_dir,'t1', '%04d_final.pt' % num_epochs))
 torch.save(checkpoint_t2, os.path.join(model_dir,'t2', '%04d_final.pt' % num_epochs))
 print("Training finished.")

@@ -79,7 +79,7 @@ resnet.eval()
 resnet = vxm.networks.SingleResNet(in_channels=1, resnet_version='base', n_basefilters=16, n_blocks=6)
 resnet.load_state_dict(torch.load('./pretrained_model/pretrained_ukb_state_dict.pt'))
 resnet.cuda()
-for param in resnet.parameters():
+for param in resnet.parameters():s
     param.data.sub_(torch.mean(param)).div_(torch.std(param)) 
 '''
 
@@ -102,7 +102,7 @@ for data in training_loader:
             print('feature:',i,'   ',feature.shape)
 
         # select the layer in the resnet
-        layer = 2
+        layer = 3
         
         # center the data
         x_mu = features_x[layer].mean(dim=(0,2,3,4), keepdim=True)

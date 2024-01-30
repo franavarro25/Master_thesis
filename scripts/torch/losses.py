@@ -1159,14 +1159,16 @@ class CXB_resnset(nn.Module):
         self.sp_dist = torch.exp(-compute_l2_distance_3d(self.grid, self.grid)) # similarity
     
 
-    def forward(self, t2_features, t1_features):
+    def forward(self, t2_features, t1_features, layer):
         
-        x = t2_features[3]
-        y = t1_features[3]
+        x = t2_features[layer]
+        y = t1_features[layer]
+        
         y_mu = y.mean(dim=(0,2,3,4), keepdim=True)
         x = x - y_mu
         y = y - y_mu
         N, C, H, W, D = x.size()
+
         #L2 normalization
         x = F.normalize(x, p=2, dim=1)
         y = F.normalize(y, p=2, dim=1)
@@ -1176,7 +1178,6 @@ class CXB_resnset(nn.Module):
         y_patches = divide_volume(volume=y, patch_size=(self.patch_size,self.patch_size,self.patch_size)) # 32x32x32 vols
         
         max_tot = []
-        max_tot_idx = []
         
         for i, (x_patch, y_patch) in enumerate(zip(x_patches, y_patches)):
             sim_raw = compute_cosine_similarity_3d(x_patch, y_patch) ##### similarity
@@ -1184,7 +1185,7 @@ class CXB_resnset(nn.Module):
             dist_tilde = compute_relative_distance(1-sim_combined) # if its the only neighbour, high affinity.
             cx = compute_cx(dist_tilde, self.band_width) # eq(3,4) distance-->similarit + invariant
             max_tot.append(torch.max(cx, dim=1)[0])
-        cx_tot = torch.stack(max_tot, dim=0)
+        cx_tot = torch.stack(max_tot, dim=0) 
         cx_tot = torch.mean(cx_tot, dim=2)  # Eq(1) shape--> n_patches x batch
         cx_loss = torch.mean(-torch.log(cx_tot + 1e-5))  # Eq(5)
         return cx_loss 
