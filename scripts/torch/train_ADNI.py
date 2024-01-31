@@ -71,8 +71,7 @@ parser.add_argument('--name', help='name of the wandb run')
 # data organization parameters
 parser.add_argument('--data-dir', default='/home/franavarro25/TUM/Master_thesis/dataset/ADNI_remote/ADNI_T1_MNIspace/', 
                     help='line-seperated list of training files')
-# /home/franavarro25/TUM/Master_thesis/dataset/OASIS/train/**/
-# /home/francisco/master_thesis/OASIS/train/**/
+
 parser.add_argument('--img-prefix', help='optional input image file prefix')
 parser.add_argument('--img-suffix', help='optional input image file suffix')
 parser.add_argument('--atlas', help='atlas filename (default: data/atlas_norm.npz)')

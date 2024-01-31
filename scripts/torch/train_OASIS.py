@@ -128,7 +128,7 @@ if args.wandb:
             'int-downsize':args.int_downsize, 'type of loss':args.loss_rgb+'&'+args.loss_feat,
             'number-epochs:':args.epochs, 'steps per epoch':args.steps_per_epoch,
             'similarity:':args.similarity,'weight-sp':args.weight_sp, 'layer':2, 'patch_size':(8,8,8),
-            'pretrained network':'adni', 'band_with':0.1, #'feat_map':36911,
+            'pretrained network':'adni', 'band_with':0.1,
             })
 
 
@@ -138,6 +138,7 @@ dataset, transformations = load_data(args.data_dir)
 
 # dataloader--> dict with keys: image,labels,image_metadata,label_metadata; values: real 3d volumes 
 train_loader, val_loader = data_loader(dataset=dataset, batch_size=args.batch_size) 
+
 
 # extract shape from sampled input [2(images),1,160,192,224]]
 inshape = next(iter(train_loader))['image'].shape[-3:]
@@ -160,15 +161,12 @@ torch.backends.cudnn.deterministic = not args.cudnn_nondet ### where does this a
 # for debugging --> model_n=args.model_output
 # losses experiments --> model_n = args.loss_rgb+'_'+args.loss_feat+'/our_loss_patches/'+'lambda_'+str(args.weight)
 # long training -->model_n=args.image_loss+'/'+args.model_output
-torch.cuda.reset_max_memory_allocated()
-max_mem = torch.cuda.max_memory_allocated() / 2**20 
+
 print('memoria del voxelmorph antes', max_mem)
 model, model_dir = vxm_model(model_n = 'CX_contra/y_norm__bw0.1_'+args.loss_feat+'/'+'lambda_'+str(args.weight), 
                              load_model=args.load_model, device=device, enc=args.enc, 
                              dec=args.dec, in_shape=inshape, bidir=args.bidir,
                              int_steps=args.int_steps, int_downsize=args.int_downsize)
-max_mem = torch.cuda.max_memory_allocated() / 2**20 
-print('memoria del voxelmorph', max_mem)
 
 if nb_gpus > 1:
     # use multiple GPUs via DataParallel
@@ -182,14 +180,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
 losses, weights = loss_functions(image_loss=args.loss_feat, bidir=args.bidir, weight=args.weight, weight_sp=args.weight_sp,
                                 int_downsize=args.int_downsize, input_shape = inshape, similarity=args.similarity)
-
-'''
-losses, weights = two_loss_functions(input_shape = inshape, image_loss = args.loss_rgb, 
-                                    loss_vgg = args.loss_feat, similarity=args.similarity, 
-                                    weight_sp=args.weight_sp, 
-                                    bidir=args.bidir, weight=args.weight, 
-                                    int_downsize=args.int_downsize, device=device)
-'''
+                                
 
 print('numero de losses', len(losses), losses)
 transform_model = vxm.layers.SpatialTransformer(inshape, mode='nearest').to(device)
